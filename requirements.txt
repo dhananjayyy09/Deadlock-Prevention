@@ -1,0 +1,8 @@
+matplotlib>=3.8.0
+networkx>=3.2
+psutil>=5.9
+pydantic>=2.7
+pyyaml>=6.0.2
+pytest>=8.2
+flask>=2.3.0
+flask-cors>=4.0.0

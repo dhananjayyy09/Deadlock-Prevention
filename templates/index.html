@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deadlock Detection Tool</title>
+    
+    <!-- External Libraries -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-project-diagram"></i>
+                <h1>Deadlock Detection Tool</h1>
+            </div>
+            <div class="header-subtitle">
+                Prediction, Detection, and Recovery
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Control Panel -->
+        <aside class="control-panel">
+            <div class="panel-section">
+                <h3><i class="fas fa-cogs"></i> Controls</h3>
+                
+                <!-- Action Buttons -->
+                <div class="button-group">
+                    <button id="predictBtn" class="action-btn primary">
+                        <i class="fas fa-crystal-ball"></i>
+                        Predict (Banker's)
+                    </button>
+                    <button id="detectBtn" class="action-btn secondary">
+                        <i class="fas fa-search"></i>
+                        Detect (WFG)
+                    </button>
+                    <button id="recoverBtn" class="action-btn danger">
+                        <i class="fas fa-heartbeat"></i>
+                        Recover
+                    </button>
+                </div>
+
+                <!-- Data Source -->
+                <div class="data-source">
+                    <button id="loadDemoBtn" class="data-btn">
+                        <i class="fas fa-play-circle"></i>
+                        Load Demo Snapshot
+                    </button>
+                    <button id="loadSystemBtn" class="data-btn">
+                        <i class="fas fa-desktop"></i>
+                        Load System Snapshot
+                    </button>
+                </div>
+
+                <!-- Auto Refresh -->
+                <div class="auto-refresh">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="autoRefreshCheck">
+                        <span class="checkmark"></span>
+                        Auto-Refresh (2s)
+                    </label>
+                </div>
+
+                <!-- View Mode -->
+                <div class="view-mode">
+                    <h4>View Mode</h4>
+                    <div class="radio-group">
+                        <label class="radio-container">
+                            <input type="radio" name="viewMode" value="RAG" checked>
+                            <span class="radio-mark"></span>
+                            Resource Allocation Graph
+                        </label>
+                        <label class="radio-container">
+                            <input type="radio" name="viewMode" value="WFG">
+                            <span class="radio-mark"></span>
+                            Wait-for Graph
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div class="status-section">
+                    <h4>Status</h4>
+                    <div id="statusDisplay" class="status-display">
+                        <div class="status-indicator idle"></div>
+                        <span class="status-text">Ready</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Graph Visualization -->
+        <section class="graph-section">
+            <div class="graph-container">
+                <div class="graph-header">
+                    <h3 id="graphTitle">Resource Allocation Graph</h3>
+                    <div class="graph-controls">
+                        <button id="zoomInBtn" class="control-btn">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button id="zoomOutBtn" class="control-btn">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <button id="resetViewBtn" class="control-btn">
+                            <i class="fas fa-expand-arrows-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="graphSvg" class="graph-svg"></div>
+                
+                <!-- Legend -->
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-node process-node"></div>
+                        <span>Process</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-node resource-node"></div>
+                        <span>Resource</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-edge allocation-edge"></div>
+                        <span>Allocation</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-edge request-edge"></div>
+                        <span>Request</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-node cycle-node"></div>
+                        <span>In Cycle</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-info">
+                <span id="footerStatus">Idle</span>
+            </div>
+            <div class="footer-stats">
+                <span class="stat">
+                    <i class="fas fa-clock"></i>
+                    <span id="runtime">00:00</span>
+                </span>
+                <span class="stat">
+                    <i class="fas fa-memory"></i>
+                    <span id="memoryUsage">0 MB</span>
+                </span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p id="loadingText">Processing...</p>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/graph.js') }}"></script>
+</body>
+</html>
