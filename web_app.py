@@ -229,6 +229,19 @@ def get_analytics_report():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/snapshots', methods=['GET'])
+def get_saved_snapshots():
+    """Retrieve all saved snapshots"""
+    # Load from database or file
+    return jsonify({"snapshots": []})
+
+@app.route('/api/snapshots', methods=['POST'])
+def save_snapshot():
+    """Save a snapshot for later comparison"""
+    data = request.json
+    # Save to database or file
+    return jsonify({"success": True, "id": 123})
+
 
 # WebSocket for real-time monitoring
 @socketio.on('start_monitoring')
