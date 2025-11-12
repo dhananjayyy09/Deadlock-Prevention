@@ -18,5 +18,5 @@ class AppLogger:
 	def warn(self, message: str, **kw: Any) -> None:
 		self._log("WARN", message, **kw)
 
-	def error(self, message: str, **kw: Any) -> None:
+	def error(self, message: str, **kw: Any) -> None:gi
 		self._log("ERROR", message, **kw)

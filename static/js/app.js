@@ -11,6 +11,9 @@ class DeadlockApp {
         this.autoRefreshInterval = null;
         this.runtimeStart = Date.now();
         this.graphVisualization = null;
+        this.socket = null;
+        this.mlPrediction = null;
+        this.isRealtimeMode = false;
         
         this.init();
     }
@@ -32,22 +35,28 @@ class DeadlockApp {
             return;
         }
         
-        this.loadDemoSnapshot();
+        this.graphVisualization = new GraphVisualization('graphSvg');
         this.showToast('success', 'Application Loaded', 'Deadlock Detection Tool is ready!');
     }
 
     setupEventListeners() {
         // Control buttons
-        document.getElementById('predictBtn').addEventListener('click', () => this.predict());
-        document.getElementById('detectBtn').addEventListener('click', () => this.detect());
-        document.getElementById('recoverBtn').addEventListener('click', () => this.recover());
+        document.getElementById('predictBtn')?.addEventListener('click', () => this.predict());
+        document.getElementById('predictMlBtn')?.addEventListener('click', () => this.predictML());
+        document.getElementById('detectBtn')?.addEventListener('click', () => this.detect());
+        document.getElementById('recoverBtn')?.addEventListener('click', () => this.recover());
         
         // Data source buttons
-        document.getElementById('loadDemoBtn').addEventListener('click', () => this.loadDemoSnapshot());
-        document.getElementById('loadSystemBtn').addEventListener('click', () => this.loadSystemSnapshot());
+        document.getElementById('loadDemoBtn')?.addEventListener('click', () => this.loadDemoSnapshot());
+        document.getElementById('loadSystemBtn')?.addEventListener('click', () => this.loadSystemSnapshot());
+        document.getElementById('loadRealtimeBtn')?.addEventListener('click', () => this.loadRealtimeSnapshot());
+        
+        // Real-time and analytics
+        document.getElementById('toggleRealtimeBtn')?.addEventListener('click', () => this.toggleRealtimeMonitoring());
+        document.getElementById('viewAnalyticsBtn')?.addEventListener('click', () => this.showAnalytics());
         
         // Auto refresh
-        document.getElementById('autoRefreshCheck').addEventListener('change', (e) => {
+        document.getElementById('autoRefreshCheck')?.addEventListener('change', (e) => {
             this.toggleAutoRefresh(e.target.checked);
         });
         
@@ -57,9 +66,9 @@ class DeadlockApp {
         });
         
         // Graph controls
-        document.getElementById('zoomInBtn').addEventListener('click', () => this.zoomIn());
-        document.getElementById('zoomOutBtn').addEventListener('click', () => this.zoomOut());
-        document.getElementById('resetViewBtn').addEventListener('click', () => this.resetView());
+        document.getElementById('zoomInBtn')?.addEventListener('click', () => this.zoomIn());
+        document.getElementById('zoomOutBtn')?.addEventListener('click', () => this.zoomOut());
+        document.getElementById('resetViewBtn')?.addEventListener('click', () => this.resetView());
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
@@ -105,6 +114,39 @@ class DeadlockApp {
         }
     }
 
+    async loadRealtimeSnapshot() {
+        try {
+            this.showLoading('Reading real file locks from system...');
+            this.isRealtimeMode = true;
+            
+            const response = await fetch('/api/realtime-snapshot');
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            this.currentSnapshot = data;
+            this.updateStatus('Real-time file lock snapshot loaded', 'success');
+            this.refreshVisualization();
+            
+            if (data.processes.length === 0) {
+                this.showToast('info', 'No Locks Found', 
+                    'No file locks detected. System may not have lock contention.');
+            } else {
+                this.showToast('success', 'Real Locks Loaded', 
+                    `Found ${data.processes.length} processes with file locks`);
+            }
+            
+        } catch (error) {
+            this.showToast('error', 'Real-time Error', 
+                'Failed to load real locks. Linux only feature. Error: ' + error.message);
+            console.error('Error loading real-time snapshot:', error);
+        } finally {
+            this.hideLoading();
+        }
+    }
+
     async predict() {
         if (!this.currentSnapshot) {
             this.showToast('warning', 'No Data', 'Please load a snapshot first');
@@ -130,18 +172,34 @@ class DeadlockApp {
             }
             
             const statusClass = result.safe ? 'success' : 'error';
-            const statusText = `Prediction: ${result.message}`;
+            let statusText = `Prediction: ${result.message}`;
+            
+            if (result.safe_sequence && result.safe_sequence.length > 0) {
+                statusText += ` | Safe Sequence: [${result.safe_sequence.join(' → ')}]`;
+            }
             
             this.updateStatus(statusText, statusClass);
-            this.updateFooter(`Ran Banker's prediction - ${result.details}`);
+            this.updateFooter(`Detection Time: ${result.detection_time_ms}ms`);
+            
+            // Show detailed info
+            let details = result.details;
+            if (result.all_safe_sequences && result.all_safe_sequences.length > 1) {
+                details += `\n\nFound ${result.all_safe_sequences.length} possible safe sequences`;
+            }
+            
+            if (result.resource_utilization) {
+                details += '\n\nResource Utilization:';
+                for (const [rid, util] of Object.entries(result.resource_utilization)) {
+                    details += `\n${rid}: ${util.toFixed(1)}%`;
+                }
+            }
             
             this.showToast(
                 result.safe ? 'success' : 'warning',
                 'Safety Analysis Complete',
-                result.details
+                details
             );
             
-            // Animate the result and refresh visualization to show current state
             this.animateResult(statusClass);
             this.refreshVisualization();
             
@@ -182,10 +240,21 @@ class DeadlockApp {
             this.currentCycles = result.cycles;
             
             const statusClass = result.has_deadlock ? 'error' : 'success';
-            const statusText = `Detection: ${result.message}`;
+            let statusText = `Detection: ${result.message}`;
+            
+            // Add algorithm comparison
+            if (result.cycles_tarjan) {
+                const tarjanMatch = result.cycles.length === result.cycles_tarjan.length;
+                statusText += ` | Tarjan's: ${result.cycles_tarjan.length} cycles`;
+                if (tarjanMatch) {
+                    statusText += ' ✓';
+                }
+            }
+            
+            statusText += ` | Time: ${result.detection_time_ms}ms`;
             
             this.updateStatus(statusText, statusClass);
-            this.updateFooter('Ran WFG detection');
+            this.updateFooter('Ran WFG detection with multiple algorithms');
             
             this.showToast(
                 result.has_deadlock ? 'error' : 'success',
@@ -239,7 +308,7 @@ class DeadlockApp {
             
             const statusText = `Recovery: ${result.message}`;
             this.updateStatus(statusText, 'success');
-            this.updateFooter('Applied recovery simulation');
+            this.updateFooter(`Recovery Time: ${result.recovery_time_ms}ms`);
             
             this.showToast(
                 result.victims.length > 0 ? 'warning' : 'success',
@@ -255,6 +324,71 @@ class DeadlockApp {
             this.showToast('error', 'Recovery Error', 'Failed to apply recovery: ' + error.message);
             this.updateStatus('Recovery failed', 'error');
             console.error('Error in recovery:', error);
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async predictML() {
+        if (!this.currentSnapshot) {
+            this.showToast('warning', 'No Data', 'Please load a snapshot first');
+            return;
+        }
+
+        try {
+            this.updateStatus('Running ML prediction...', 'processing');
+            this.showLoading('Analyzing with machine learning...');
+            
+            const response = await fetch('/api/predict-ml', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(this.currentSnapshot)
+            });
+            
+            const result = await response.json();
+            
+            if (result.error) {
+                throw new Error(result.error);
+            }
+            
+            this.mlPrediction = result;
+            
+            const probability = (result.probability * 100).toFixed(1);
+            const statusText = `ML Prediction: ${result.risk_level} Risk (${probability}% probability)`;
+            
+            const statusClass = result.risk_level === 'LOW' ? 'success' : 
+                               result.risk_level === 'MEDIUM' ? 'warning' : 'error';
+            
+            this.updateStatus(statusText, statusClass);
+            
+            // Show feature importance
+            let details = `Deadlock Probability: ${probability}%\nRisk Level: ${result.risk_level}`;
+            
+            if (result.feature_importance) {
+                details += '\n\nTop Contributing Factors:';
+                const sorted = Object.entries(result.feature_importance)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3);
+                
+                for (const [feature, importance] of sorted) {
+                    details += `\n• ${feature}: ${(importance * 100).toFixed(1)}%`;
+                }
+            }
+            
+            this.showToast(
+                statusClass,
+                'ML Prediction Complete',
+                details
+            );
+            
+            // Display ML probability on UI
+            this.displayMLProbability(result);
+            
+        } catch (error) {
+            this.showToast('error', 'ML Prediction Error', error.message);
+            console.error('Error in ML prediction:', error);
         } finally {
             this.hideLoading();
         }
@@ -381,6 +515,177 @@ class DeadlockApp {
         } else {
             this.showToast('info', 'Auto-Refresh Disabled', 'Manual refresh only');
         }
+    }
+
+    toggleRealtimeMonitoring() {
+        const btn = document.getElementById('toggleRealtimeBtn');
+        
+        if (this.socket && this.socket.connected) {
+            // Stop monitoring
+            this.socket.disconnect();
+            this.socket = null;
+            btn.textContent = '▶️ Start Real-Time';
+            btn.classList.remove('active');
+            this.showToast('info', 'Monitoring Stopped', 'Real-time monitoring disabled');
+        } else {
+            // Start monitoring
+            this.startRealtimeMonitoring();
+            btn.textContent = '⏸️ Stop Real-Time';
+            btn.classList.add('active');
+            this.showToast('success', 'Monitoring Started', 'Real-time updates every 2 seconds');
+        }
+    }
+
+    startRealtimeMonitoring() {
+        // Initialize Socket.IO
+        this.socket = io();
+        
+        this.socket.on('connect', () => {
+            console.log('WebSocket connected');
+            this.socket.emit('start_monitoring');
+        });
+        
+        this.socket.on('system_update', (data) => {
+            console.log('Real-time update received:', data);
+            
+            // Update snapshot
+            this.currentSnapshot = data.snapshot;
+            this.currentCycles = data.cycles;
+            
+            // Update ML probability
+            if (data.ml_probability !== undefined) {
+                this.displayMLProbability({
+                    probability: data.ml_probability,
+                    risk_level: data.ml_probability > 0.7 ? 'HIGH' : 
+                               data.ml_probability > 0.4 ? 'MEDIUM' : 'LOW'
+                });
+            }
+            
+            // Update visualization
+            this.refreshVisualization();
+            
+            // Update status
+            if (data.cycles.length > 0) {
+                this.updateStatus(`🚨 DEADLOCK DETECTED: ${data.cycles.length} cycle(s)`, 'error');
+            } else {
+                this.updateStatus('✅ System healthy - No deadlocks', 'success');
+            }
+        });
+        
+        this.socket.on('error', (error) => {
+            console.error('WebSocket error:', error);
+            this.showToast('error', 'Monitoring Error', error.message);
+        });
+    }
+
+    async showAnalytics() {
+        try {
+            this.showLoading('Loading analytics...');
+            
+            const response = await fetch('/api/analytics/trends?days=7');
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // Create analytics modal
+            this.displayAnalyticsModal(data);
+            
+        } catch (error) {
+            this.showToast('error', 'Analytics Error', error.message);
+            console.error('Error loading analytics:', error);
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    displayAnalyticsModal(data) {
+        const modal = document.createElement('div');
+        modal.className = 'analytics-modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📊 Deadlock Analytics (Last 7 Days)</h2>
+                    <button class="close-btn" onclick="this.closest('.analytics-modal').remove()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${data.trends.total_deadlocks}</div>
+                            <div class="stat-label">Total Deadlocks</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${data.trends.avg_cycles}</div>
+                            <div class="stat-label">Avg Cycles</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${data.trends.avg_detection_time_ms}ms</div>
+                            <div class="stat-label">Avg Detection Time</div>
+                        </div>
+                    </div>
+                    
+                    <h3>Most Affected Processes</h3>
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Process ID</th>
+                                <th>Deadlock Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.most_affected_processes.map(p => `
+                                <tr>
+                                    <td>PID ${p.pid}</td>
+                                    <td>${p.deadlock_count}</td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="2">No data available</td></tr>'}
+                        </tbody>
+                    </table>
+                    
+                    <h3>Peak Hours</h3>
+                    <div class="peak-hours">
+                        ${Object.entries(data.trends.peak_hours || {})
+                            .map(([hour, count]) => `
+                                <div class="hour-bar">
+                                    <span>${hour}:00</span>
+                                    <div class="bar" style="width: ${count * 20}px">${count}</div>
+                                </div>
+                            `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    }
+
+    displayMLProbability(mlResult) {
+        // Add ML probability indicator to status section
+        const statusSection = document.querySelector('.status-section');
+        
+        let mlDisplay = document.getElementById('ml-probability-display');
+        if (!mlDisplay) {
+            mlDisplay = document.createElement('div');
+            mlDisplay.id = 'ml-probability-display';
+            mlDisplay.className = 'ml-display';
+            statusSection.appendChild(mlDisplay);
+        }
+        
+        const probability = (mlResult.probability * 100).toFixed(1);
+        const riskClass = mlResult.risk_level.toLowerCase();
+        
+        mlDisplay.innerHTML = `
+            <h4>🤖 ML Prediction</h4>
+            <div class="ml-probability ${riskClass}">
+                <div class="probability-bar">
+                    <div class="probability-fill" style="width: ${probability}%"></div>
+                </div>
+                <div class="probability-text">
+                    ${probability}% - ${mlResult.risk_level} Risk
+                </div>
+            </div>
+        `;
     }
 
     zoomIn() {

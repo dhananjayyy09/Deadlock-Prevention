@@ -6,7 +6,9 @@ Provides REST API endpoints for the frontend
 
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 import json
+import time
 from typing import Dict, List, Set, Any
 
 # Import our core modules
@@ -14,11 +16,16 @@ from core.bankers import BankersAlgorithm
 from core.wfg import WFGDetector
 from core.recovery import RecoveryManager
 from core.models import SystemSnapshot, WaitForGraph, Process, Resource
+from core.ml_predictor import MLDeadlockPredictor
+from core.realtime_detector import RealTimeDeadlockDetector
+from core.analytics import DeadlockAnalytics
 from sysif.ps_reader import PsutilReader
 from sysif.normalize import Normalizer
 
+
 app = Flask(__name__)
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Initialize core components
 bankers = BankersAlgorithm()
@@ -26,11 +33,16 @@ wfg_detector = WFGDetector()
 recovery = RecoveryManager()
 reader = PsutilReader()
 normalizer = Normalizer()
+ml_predictor = MLDeadlockPredictor()
+realtime_detector = RealTimeDeadlockDetector()
+analytics = DeadlockAnalytics()
+
 
 @app.route('/')
 def index():
     """Serve the main HTML page"""
     return render_template('index.html')
+
 
 @app.route('/api/demo-snapshot', methods=['GET'])
 def get_demo_snapshot():
@@ -63,6 +75,7 @@ def get_demo_snapshot():
     
     return jsonify(snapshot_to_dict(snapshot))
 
+
 @app.route('/api/system-snapshot', methods=['GET'])
 def get_system_snapshot():
     """Get live system snapshot using psutil"""
@@ -73,21 +86,46 @@ def get_system_snapshot():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/realtime-snapshot', methods=['GET'])
+def get_realtime_snapshot():
+    """Get real file lock deadlocks from system"""
+    try:
+        snapshot = realtime_detector.detect_file_lock_deadlocks()
+        return jsonify(snapshot_to_dict(snapshot))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/predict', methods=['POST'])
 def predict_deadlock():
     """Run Banker's algorithm prediction"""
     try:
         snapshot_data = request.json
         snapshot = dict_to_snapshot(snapshot_data)
-        safe = bankers.is_safe(snapshot)
+        
+        start_time = time.time()
+        is_safe, safe_sequence, final_available = bankers.is_safe(snapshot)
+        detection_time = (time.time() - start_time) * 1000
+        
+        # Get all possible safe sequences
+        all_sequences = bankers.find_all_safe_sequences(snapshot)
+        
+        # Get resource utilization
+        utilization = bankers.analyze_resource_utilization(snapshot)
         
         return jsonify({
-            "safe": safe,
-            "message": "SAFE" if safe else "UNSAFE",
-            "details": "System is in a safe state" if safe else "System may lead to deadlock"
+            "safe": is_safe,
+            "message": "SAFE" if is_safe else "UNSAFE",
+            "details": "System is in a safe state" if is_safe else "System may lead to deadlock",
+            "safe_sequence": safe_sequence,
+            "all_safe_sequences": all_sequences[:5],  # Limit to 5 sequences
+            "detection_time_ms": round(detection_time, 2),
+            "resource_utilization": utilization
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/detect', methods=['POST'])
 def detect_deadlock():
@@ -95,17 +133,47 @@ def detect_deadlock():
     try:
         snapshot_data = request.json
         snapshot = dict_to_snapshot(snapshot_data)
+        
+        start_time = time.time()
         wfg = build_wfg(snapshot)
         cycles = wfg_detector.find_cycles(wfg)
+        detection_time = (time.time() - start_time) * 1000
+        
+        # Also try Tarjan's algorithm
+        cycles_tarjan = wfg_detector.find_cycles_tarjan(wfg)
+        
+        # Log to analytics
+        if cycles:
+            analytics.log_deadlock_event(snapshot, cycles, [], detection_time, False)
         
         return jsonify({
             "cycles": [list(cycle) for cycle in cycles],
+            "cycles_tarjan": [list(cycle) for cycle in cycles_tarjan],
             "has_deadlock": len(cycles) > 0,
             "message": "No cycles detected" if not cycles else f"Found {len(cycles)} cycle(s)",
+            "detection_time_ms": round(detection_time, 2),
             "wfg": wfg_to_dict(wfg)
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/predict-ml', methods=['POST'])
+def predict_ml():
+    """ML-based deadlock prediction"""
+    try:
+        snapshot_data = request.json
+        snapshot = dict_to_snapshot(snapshot_data)
+        
+        prediction = ml_predictor.predict_and_explain(snapshot)
+        
+        # Log snapshot for future training
+        analytics.log_snapshot(snapshot, False, prediction['probability'])
+        
+        return jsonify(prediction)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/recover', methods=['POST'])
 def recover_deadlock():
@@ -113,18 +181,88 @@ def recover_deadlock():
     try:
         snapshot_data = request.json
         snapshot = dict_to_snapshot(snapshot_data)
+        
+        start_time = time.time()
         wfg = build_wfg(snapshot)
         cycles = wfg_detector.find_cycles(wfg)
         victims = recovery.choose_victims(cycles)
         new_snapshot = recovery.apply_preemption(snapshot, victims)
+        recovery_time = (time.time() - start_time) * 1000
+        
+        # Log recovery event
+        if victims:
+            analytics.log_deadlock_event(snapshot, cycles, list(victims), recovery_time, True)
         
         return jsonify({
             "victims": list(victims) if victims else [],
             "message": f"Preempted processes: {list(victims)}" if victims else "No recovery needed",
+            "recovery_time_ms": round(recovery_time, 2),
             "new_snapshot": snapshot_to_dict(new_snapshot)
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/analytics/trends', methods=['GET'])
+def get_analytics_trends():
+    """Get deadlock trends and statistics"""
+    try:
+        days = int(request.args.get('days', 7))
+        trends = analytics.get_deadlock_trends(days)
+        affected_processes = analytics.get_most_affected_processes(days)
+        
+        return jsonify({
+            "trends": trends,
+            "most_affected_processes": affected_processes
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/analytics/report', methods=['GET'])
+def get_analytics_report():
+    """Generate text report"""
+    try:
+        days = int(request.args.get('days', 7))
+        report = analytics.export_report(days)
+        return report, 200, {'Content-Type': 'text/plain'}
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# WebSocket for real-time monitoring
+@socketio.on('start_monitoring')
+def handle_start_monitoring():
+    """Start real-time system monitoring"""
+    def monitor_loop():
+        while True:
+            try:
+                # Get snapshot
+                data = reader.snapshot()
+                snapshot = normalizer.to_snapshot(data)
+                
+                # Detect cycles
+                wfg = build_wfg(snapshot)
+                cycles = wfg_detector.find_cycles(wfg)
+                
+                # ML prediction
+                ml_prediction = ml_predictor.predict_deadlock_probability(snapshot)
+                
+                # Emit update
+                emit('system_update', {
+                    'snapshot': snapshot_to_dict(snapshot),
+                    'cycles': [list(c) for c in cycles],
+                    'ml_probability': ml_prediction,
+                    'timestamp': time.time()
+                })
+                
+                socketio.sleep(2)  # Update every 2 seconds
+            except Exception as e:
+                emit('error', {'message': str(e)})
+                break
+    
+    socketio.start_background_task(monitor_loop)
+
 
 def build_wfg(snapshot: SystemSnapshot) -> WaitForGraph:
     """Build wait-for graph from system snapshot"""
@@ -138,6 +276,7 @@ def build_wfg(snapshot: SystemSnapshot) -> WaitForGraph:
             edges.setdefault(pid_r, set()).update(blockers)
     return WaitForGraph(edges)
 
+
 def snapshot_to_dict(snapshot: SystemSnapshot) -> Dict[str, Any]:
     """Convert SystemSnapshot to dictionary for JSON serialization"""
     return {
@@ -146,6 +285,7 @@ def snapshot_to_dict(snapshot: SystemSnapshot) -> Dict[str, Any]:
         "allocation": {f"{pid}_{rid}": count for (pid, rid), count in snapshot.allocation.items()},
         "request": {f"{pid}_{rid}": count for (pid, rid), count in snapshot.request.items()}
     }
+
 
 def dict_to_snapshot(data: Dict[str, Any]) -> SystemSnapshot:
     """Convert dictionary to SystemSnapshot"""
@@ -164,9 +304,12 @@ def dict_to_snapshot(data: Dict[str, Any]) -> SystemSnapshot:
     
     return SystemSnapshot(processes, resources, allocation, request_dict)
 
+
 def wfg_to_dict(wfg: WaitForGraph) -> Dict[str, List[int]]:
     """Convert WaitForGraph to dictionary for JSON serialization"""
     return {str(pid): list(nbrs) for pid, nbrs in wfg.edges.items()}
 
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+
