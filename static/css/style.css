@@ -1308,3 +1308,106 @@ body {
     fill: var(--text-secondary);
     pointer-events: none;
 }
+
+/* Simulation Section */
+.simulation-section {
+    margin-bottom: 1rem;
+}
+
+.simulation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.simulation-card {
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-align: center;
+}
+
+.simulation-card:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.simulation-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.simulation-card h3 {
+    font-size: 1.125rem;
+    color: var(--text-primary);
+    margin: 0 0 0.5rem 0;
+}
+
+.simulation-desc {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.simulation-meta {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge.circular-wait {
+    background: #f59e0b;
+    color: white;
+}
+
+.badge.hold-and-wait {
+    background: #8b5cf6;
+    color: white;
+}
+
+.badge.unsafe-state {
+    background: #ef4444;
+    color: white;
+}
+
+.badge.safe {
+    background: #10b981;
+    color: white;
+}
+
+.difficulty {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.difficulty.easy {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+.difficulty.medium {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.difficulty.hard {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+

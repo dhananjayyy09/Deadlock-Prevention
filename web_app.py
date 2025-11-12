@@ -21,7 +21,7 @@ from core.realtime_detector import RealTimeDeadlockDetector
 from core.analytics import DeadlockAnalytics
 from sysif.ps_reader import PsutilReader
 from sysif.normalize import Normalizer
-
+from core.simulator import DeadlockSimulator
 
 app = Flask(__name__)
 CORS(app)
@@ -36,7 +36,7 @@ normalizer = Normalizer()
 ml_predictor = MLDeadlockPredictor()
 realtime_detector = RealTimeDeadlockDetector()
 analytics = DeadlockAnalytics()
-
+simulator = DeadlockSimulator()
 
 @app.route('/')
 def index():
@@ -242,6 +242,45 @@ def save_snapshot():
     # Save to database or file
     return jsonify({"success": True, "id": 123})
 
+@app.route('/api/simulations', methods=['GET'])
+def get_simulations():
+    """Get list of available simulation scenarios"""
+    info = simulator.get_scenario_info()
+    return jsonify({"scenarios": info})
+
+
+@app.route('/api/simulate/<scenario_name>', methods=['GET'])
+def simulate_scenario(scenario_name):
+    """
+    Load a specific simulation scenario
+    
+    Available scenarios:
+    - dining_philosophers
+    - reader_writer
+    - circular_wait
+    - banker_unsafe
+    - no_deadlock
+    - producer_consumer
+    """
+    try:
+        scenarios = simulator.get_all_scenarios()
+        
+        if scenario_name not in scenarios:
+            return jsonify({
+                "error": f"Unknown scenario: {scenario_name}",
+                "available": list(scenarios.keys())
+            }), 404
+        
+        snapshot = scenarios[scenario_name]
+        info = simulator.get_scenario_info()[scenario_name]
+        
+        return jsonify({
+            "snapshot": snapshot_to_dict(snapshot),
+            "info": info,
+            "message": f"Loaded {info['name']} simulation"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # WebSocket for real-time monitoring
 @socketio.on('start_monitoring')

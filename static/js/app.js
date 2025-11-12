@@ -79,6 +79,7 @@ class DeadlockApp {
         document.getElementById('compareBtn')?.addEventListener('click', () => this.openComparisonMode());
         document.getElementById('snapshotA')?.addEventListener('change', (e) => this.loadComparisonSnapshot('A', e.target.value));
         document.getElementById('snapshotB')?.addEventListener('change', (e) => this.loadComparisonSnapshot('B', e.target.value));
+        document.getElementById('viewSimulationsBtn')?.addEventListener('click', () => this.showSimulations());
     }
 
     async loadDemoSnapshot() {
@@ -1056,6 +1057,77 @@ class DeadlockApp {
         `).join('');
         }
     }
+    // Add these new methods to the DeadlockApp class
+    async showSimulations() {
+        try {
+            this.showLoading('Loading simulations...');
+            const response = await fetch('/api/simulations');
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            this.displaySimulationsModal(data.scenarios);
+        } catch (error) {
+            this.showToast('error', 'Simulation Error', error.message);
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    displaySimulationsModal(scenarios) {
+        const modal = document.createElement('div');
+        modal.className = 'analytics-modal'; // Reuse analytics modal styles
+        modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🎓 Deadlock Simulation Scenarios</h2>
+                <button class="close-btn" onclick="this.closest('.analytics-modal').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                    Load classic deadlock scenarios for demonstration and learning
+                </p>
+                <div class="simulation-grid">
+                    ${Object.entries(scenarios).map(([key, info]) => `
+                        <div class="simulation-card" onclick="window.deadlockApp.loadSimulation('${key}')">
+                            <div class="simulation-icon">${info.icon}</div>
+                            <h3>${info.name}</h3>
+                            <p class="simulation-desc">${info.description}</p>
+                            <div class="simulation-meta">
+                                <span class="badge ${info.type.toLowerCase().replace(' ', '-')}">${info.type}</span>
+                                <span class="difficulty ${info.difficulty.toLowerCase()}">${info.difficulty}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+        document.body.appendChild(modal);
+    }
+
+    async loadSimulation(scenarioKey) {
+        try {
+            // Close modal
+            document.querySelector('.analytics-modal')?.remove();
+
+            this.showLoading(`Loading ${scenarioKey} simulation...`);
+            const response = await fetch(`/api/simulate/${scenarioKey}`);
+            const data = await response.json();
+
+            if (data.error) throw new Error(data.error);
+
+            this.currentSnapshot = data.snapshot;
+            this.updateStatus(`Simulation loaded: ${data.info.name}`, 'success');
+            this.refreshVisualization();
+
+            this.showToast('success', 'Simulation Loaded',
+                `${data.info.icon} ${data.info.name}\n${data.info.description}`);
+        } catch (error) {
+            this.showToast('error', 'Simulation Error', error.message);
+        } finally {
+            this.hideLoading();
+        }
+    }
+
 }
 
 // Initialize the application when DOM is loaded
