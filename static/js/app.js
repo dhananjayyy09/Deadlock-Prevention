@@ -80,6 +80,9 @@ class DeadlockApp {
         document.getElementById('snapshotA')?.addEventListener('change', (e) => this.loadComparisonSnapshot('A', e.target.value));
         document.getElementById('snapshotB')?.addEventListener('change', (e) => this.loadComparisonSnapshot('B', e.target.value));
         document.getElementById('viewSimulationsBtn')?.addEventListener('click', () => this.showSimulations());
+
+        document.getElementById('generateReportBtn')?.addEventListener('click', () => this.generatePDFReport());
+
     }
 
     async loadDemoSnapshot() {
@@ -1128,6 +1131,53 @@ class DeadlockApp {
         }
     }
 
+    // Add this method
+    async generatePDFReport() {
+        if (!this.currentSnapshot) {
+            this.showToast('warning', 'No Data', 'Please load a snapshot first');
+            return;
+        }
+
+        try {
+            this.showLoading('Generating PDF report...');
+
+            // Gather all available data
+            const reportData = {
+                snapshot: this.currentSnapshot,
+                detection_result: this.currentWFG ? {
+                    has_deadlock: this.currentCycles.length > 0,
+                    cycles: this.currentCycles,
+                    wfg: this.currentWFG
+                } : null,
+                ml_result: this.mlPrediction
+            };
+
+            const response = await fetch('/api/generate-report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reportData)
+            });
+
+            if (!response.ok) throw new Error('Failed to generate report');
+
+            // Download PDF
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `deadlock_report_${Date.now()}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            this.showToast('success', 'Report Generated', 'PDF report downloaded successfully!');
+        } catch (error) {
+            this.showToast('error', 'Report Error', error.message);
+        } finally {
+            this.hideLoading();
+        }
+    }
 }
 
 // Initialize the application when DOM is loaded

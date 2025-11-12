@@ -4,11 +4,13 @@ Flask web server for Deadlock Detection Tool
 Provides REST API endpoints for the frontend
 """
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import json
 import time
+import os
+from datetime import datetime  # ← ADD THIS LINE
 from typing import Dict, List, Set, Any
 
 # Import our core modules
@@ -22,6 +24,8 @@ from core.analytics import DeadlockAnalytics
 from sysif.ps_reader import PsutilReader
 from sysif.normalize import Normalizer
 from core.simulator import DeadlockSimulator
+from core.pdf_report import PDFReportGenerator  # ← Already have this
+    
 
 app = Flask(__name__)
 CORS(app)
@@ -37,6 +41,7 @@ ml_predictor = MLDeadlockPredictor()
 realtime_detector = RealTimeDeadlockDetector()
 analytics = DeadlockAnalytics()
 simulator = DeadlockSimulator()
+pdf_generator = PDFReportGenerator()
 
 @app.route('/')
 def index():
@@ -248,6 +253,45 @@ def get_simulations():
     info = simulator.get_scenario_info()
     return jsonify({"scenarios": info})
 
+@app.route('/api/generate-report', methods=['POST'])
+def generate_report():
+    """Generate PDF report for current system state"""
+    try:
+        data = request.json
+        
+        snapshot = data.get('snapshot')
+        detection_result = data.get('detection_result')
+        prediction_result = data.get('prediction_result')
+        ml_result = data.get('ml_result')
+        analytics = data.get('analytics')
+        
+        # Generate unique filename
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"reports/deadlock_report_{timestamp}.pdf"
+        
+        # Create reports directory if it doesn't exist
+        os.makedirs('reports', exist_ok=True)
+        
+        # Generate PDF
+        pdf_path = pdf_generator.generate_report(
+            snapshot=snapshot,
+            detection_result=detection_result,
+            prediction_result=prediction_result,
+            ml_result=ml_result,
+            analytics=analytics,
+            filename=filename
+        )
+        
+        # Send file
+        return send_file(
+            pdf_path,
+            as_attachment=True,
+            download_name=f'deadlock_report_{timestamp}.pdf',
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/simulate/<scenario_name>', methods=['GET'])
 def simulate_scenario(scenario_name):
