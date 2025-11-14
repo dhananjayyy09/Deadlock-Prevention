@@ -77,6 +77,14 @@
             </button>
           </div>
 
+          <div class="custom-builder-section">
+            <h4><i class="fas fa-tools"></i> Custom Builder</h4>
+            <button id="openBuilderBtn" class="data-btn" style="background: linear-gradient(135deg, #7c3aed, #6d28d9);">
+              <i class="fas fa-edit"></i>
+              Create Custom Snapshot
+            </button>
+          </div>
+
           <!-- Real-Time Monitoring -->
           <div class="realtime-section">
             <button id="toggleRealtimeBtn" class="data-btn" style="background: linear-gradient(135deg, #10b981, #14b8a6);">
@@ -256,6 +264,61 @@
           <div class="comparison-diff">
             <h3>Differences</h3>
             <div id="diffResults"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add modal before closing </body> tag -->
+    <div id="customBuilderModal" class="analytics-modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>🛠️ Custom Snapshot Builder</h2>
+          <button class="close-btn" onclick="document.getElementById('customBuilderModal').classList.add('hidden')">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="builder-content">
+            <!-- Step 1: Define System -->
+            <div class="builder-section">
+              <h3>📊 Step 1: Define System</h3>
+              <div class="builder-row">
+                <div class="builder-field">
+                  <label>Number of Processes:</label>
+                  <input type="number" id="numProcesses" min="2" max="10" value="3" />
+                </div>
+                <div class="builder-field">
+                  <label>Number of Resource Types:</label>
+                  <input type="number" id="numResources" min="1" max="10" value="2" />
+                </div>
+              </div>
+              <button id="generateTableBtn" class="builder-btn primary"><i class="fas fa-arrow-right"></i> Generate Tables</button>
+            </div>
+
+            <!-- Step 2: Define Resources -->
+            <div id="resourcesSection" class="builder-section hidden">
+              <h3>🔧 Step 2: Define Resources</h3>
+              <div id="resourcesTable"></div>
+            </div>
+
+            <!-- Step 3: Allocations -->
+            <div id="allocationsSection" class="builder-section hidden">
+              <h3>🔒 Step 3: Resource Allocations</h3>
+              <p class="help-text">How many units of each resource are currently held by each process?</p>
+              <div id="allocationsTable"></div>
+            </div>
+
+            <!-- Step 4: Requests -->
+            <div id="requestsSection" class="builder-section hidden">
+              <h3>⏳ Step 4: Resource Requests</h3>
+              <p class="help-text">How many units of each resource does each process need?</p>
+              <div id="requestsTable"></div>
+            </div>
+
+            <!-- Actions -->
+            <div class="builder-actions">
+              <button id="previewSnapshotBtn" class="builder-btn secondary"><i class="fas fa-eye"></i> Preview</button>
+              <button id="loadCustomSnapshotBtn" class="builder-btn primary"><i class="fas fa-check"></i> Load Snapshot</button>
+            </div>
           </div>
         </div>
       </div>

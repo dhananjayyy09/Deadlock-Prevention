@@ -405,7 +405,35 @@ def wfg_to_dict(wfg: WaitForGraph) -> Dict[str, List[int]]:
     """Convert WaitForGraph to dictionary for JSON serialization"""
     return {str(pid): list(nbrs) for pid, nbrs in wfg.edges.items()}
 
-
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
-
+    print("=" * 70)
+    print("🚀 Deadlock Detection Tool - Web Server Starting...")
+    print("=" * 70)
+    print()
+    print("📊 Server Information:")
+    print(f"   • Host: 0.0.0.0 (All interfaces)")
+    print(f"   • Port: 5000")
+    print(f"   • Debug Mode: ON")
+    print()
+    print("🌐 Access URLs:")
+    print(f"   • Local:   http://localhost:5000")
+    print(f"   • Local:   http://127.0.0.1:5000")
+    print(f"   • Network: http://0.0.0.0:5000")
+    print()
+    print("💡 Quick Actions:")
+    print("   • Press Ctrl+C to stop the server")
+    print("   • View logs below for real-time activity")
+    print()
+    print("=" * 70)
+    print()
+    
+    try:
+        socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    except KeyboardInterrupt:
+        print("\n\n" + "=" * 70)
+        print("🛑 Server stopped by user")
+        print("=" * 70)
+    except Exception as e:
+        print("\n\n" + "=" * 70)
+        print(f"❌ Server error: {e}")
+        print("=" * 70)

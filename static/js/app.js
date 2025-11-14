@@ -83,6 +83,10 @@ class DeadlockApp {
 
         document.getElementById('generateReportBtn')?.addEventListener('click', () => this.generatePDFReport());
 
+        document.getElementById('openBuilderBtn')?.addEventListener('click', () => this.openCustomBuilder());
+        document.getElementById('generateTableBtn')?.addEventListener('click', () => this.generateBuilderTables());
+        document.getElementById('previewSnapshotBtn')?.addEventListener('click', () => this.previewCustomSnapshot());
+        document.getElementById('loadCustomSnapshotBtn')?.addEventListener('click', () => this.loadCustomSnapshot());
     }
 
     async loadDemoSnapshot() {
@@ -1178,6 +1182,232 @@ class DeadlockApp {
             this.hideLoading();
         }
     }
+
+    // Add these new methods
+    openCustomBuilder() {
+        document.getElementById('customBuilderModal').classList.remove('hidden');
+        document.getElementById('resourcesSection').classList.add('hidden');
+        document.getElementById('allocationsSection').classList.add('hidden');
+        document.getElementById('requestsSection').classList.add('hidden');
+    }
+
+    generateBuilderTables() {
+        const numProcesses = parseInt(document.getElementById('numProcesses').value);
+        const numResources = parseInt(document.getElementById('numResources').value);
+
+        if (numProcesses < 2 || numProcesses > 10) {
+            this.showToast('warning', 'Invalid Input', 'Number of processes must be between 2 and 10');
+            return;
+        }
+
+        if (numResources < 1 || numResources > 10) {
+            this.showToast('warning', 'Invalid Input', 'Number of resources must be between 1 and 10');
+            return;
+        }
+
+        // Generate resources table
+        this.generateResourcesTable(numResources);
+
+        // Generate allocation table
+        this.generateAllocationTable(numProcesses, numResources);
+
+        // Generate request table
+        this.generateRequestTable(numProcesses, numResources);
+
+        // Show sections
+        document.getElementById('resourcesSection').classList.remove('hidden');
+        document.getElementById('allocationsSection').classList.remove('hidden');
+        document.getElementById('requestsSection').classList.remove('hidden');
+
+        this.showToast('success', 'Tables Generated', 'Fill in the values to create your custom snapshot');
+    }
+
+    generateResourcesTable(numResources) {
+        const container = document.getElementById('resourcesTable');
+        let html = '<table class="builder-table"><thead><tr><th>Resource ID</th><th>Total Instances</th></tr></thead><tbody>';
+
+        for (let i = 0; i < numResources; i++) {
+            html += `
+            <tr>
+                <td><input type="text" id="rid_${i}" value="R${i}" /></td>
+                <td><input type="number" id="rtotal_${i}" min="1" max="100" value="3" /></td>
+            </tr>
+        `;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    generateAllocationTable(numProcesses, numResources) {
+        const container = document.getElementById('allocationsTable');
+        let html = '<table class="builder-table"><thead><tr><th>Process</th>';
+
+        // Header with resource IDs
+        for (let j = 0; j < numResources; j++) {
+            html += `<th>R${j}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+
+        // Rows for each process
+        for (let i = 0; i < numProcesses; i++) {
+            html += `<tr><td><b>P${i}</b></td>`;
+            for (let j = 0; j < numResources; j++) {
+                html += `<td><input type="number" id="alloc_${i}_${j}" min="0" max="100" value="0" /></td>`;
+            }
+            html += '</tr>';
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    generateRequestTable(numProcesses, numResources) {
+        const container = document.getElementById('requestsTable');
+        let html = '<table class="builder-table"><thead><tr><th>Process</th>';
+
+        // Header
+        for (let j = 0; j < numResources; j++) {
+            html += `<th>R${j}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+
+        // Rows
+        for (let i = 0; i < numProcesses; i++) {
+            html += `<tr><td><b>P${i}</b></td>`;
+            for (let j = 0; j < numResources; j++) {
+                html += `<td><input type="number" id="req_${i}_${j}" min="0" max="100" value="0" /></td>`;
+            }
+            html += '</tr>';
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    previewCustomSnapshot() {
+        try {
+            const snapshot = this.buildSnapshotFromInputs();
+
+            // Show preview
+            const numProcesses = snapshot.processes.length;
+            const numResources = Object.keys(snapshot.resources).length;
+            const totalAlloc = Object.values(snapshot.allocation).reduce((sum, val) => sum + val, 0);
+            const totalReq = Object.values(snapshot.request).reduce((sum, val) => sum + val, 0);
+
+            const preview = `
+Custom Snapshot Preview:
+
+Processes: ${numProcesses}
+Resources: ${numResources}
+Total Allocations: ${totalAlloc}
+Total Requests: ${totalReq}
+
+Click "Load Snapshot" to use this configuration.
+        `;
+
+            this.showToast('info', 'Snapshot Preview', preview);
+        } catch (error) {
+            this.showToast('error', 'Invalid Input', error.message);
+        }
+    }
+
+    loadCustomSnapshot() {
+        try {
+            const snapshot = this.buildSnapshotFromInputs();
+
+            // Load it as current snapshot
+            this.currentSnapshot = snapshot;
+
+            // Close modal
+            document.getElementById('customBuilderModal').classList.add('hidden');
+
+            // Refresh visualization
+            this.refreshVisualization();
+
+            this.updateStatus('Custom snapshot loaded', 'success');
+            this.showToast('success', 'Custom Snapshot Loaded',
+                `Loaded ${snapshot.processes.length} processes and ${Object.keys(snapshot.resources).length} resources`);
+        } catch (error) {
+            this.showToast('error', 'Load Error', error.message);
+        }
+    }
+
+    buildSnapshotFromInputs() {
+        const numProcesses = parseInt(document.getElementById('numProcesses').value);
+        const numResources = parseInt(document.getElementById('numResources').value);
+
+        // Build processes
+        const processes = [];
+        for (let i = 0; i < numProcesses; i++) {
+            processes.push({
+                pid: i,
+                name: `P${i}`
+            });
+        }
+
+        // Build resources
+        const resources = {};
+        for (let i = 0; i < numResources; i++) {
+            const rid = document.getElementById(`rid_${i}`)?.value || `R${i}`;
+            const total = parseInt(document.getElementById(`rtotal_${i}`)?.value || 3);
+
+            if (total < 1) {
+                throw new Error(`Resource ${rid} must have at least 1 instance`);
+            }
+
+            resources[rid] = {
+                rid: rid,
+                total: total
+            };
+        }
+
+        // Build allocation matrix
+        const allocation = {};
+        for (let i = 0; i < numProcesses; i++) {
+            for (let j = 0; j < numResources; j++) {
+                const value = parseInt(document.getElementById(`alloc_${i}_${j}`)?.value || 0);
+                const rid = document.getElementById(`rid_${j}`)?.value || `R${j}`;
+
+                if (value > 0) {
+                    allocation[`${i}_${rid}`] = value;
+                }
+            }
+        }
+
+        // Build request matrix
+        const request = {};
+        for (let i = 0; i < numProcesses; i++) {
+            for (let j = 0; j < numResources; j++) {
+                const value = parseInt(document.getElementById(`req_${i}_${j}`)?.value || 0);
+                const rid = document.getElementById(`rid_${j}`)?.value || `R${j}`;
+
+                if (value > 0) {
+                    request[`${i}_${rid}`] = value;
+                }
+            }
+        }
+
+        // Validation: Check if allocation doesn't exceed resource capacity
+        for (const [rid, resource] of Object.entries(resources)) {
+            let totalAllocated = 0;
+            for (let i = 0; i < numProcesses; i++) {
+                totalAllocated += allocation[`${i}_${rid}`] || 0;
+            }
+
+            if (totalAllocated > resource.total) {
+                throw new Error(`Total allocation for ${rid} (${totalAllocated}) exceeds capacity (${resource.total})`);
+            }
+        }
+
+        return {
+            processes: processes,
+            resources: resources,
+            allocation: allocation,
+            request: request
+        };
+    }
+
 }
 
 // Initialize the application when DOM is loaded
